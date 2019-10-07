@@ -1,0 +1,12 @@
+
+We use the algorithm of guyot. al 2012 to reconstructing individual-level time-to-event data based on the published Kaplan–Meier curves of the randomized controlled trial (Rittmeyer et al. 2017). This algorithm is available in code R based on the inverse of the Kaplan Meier equation.
+
+After reconstruction, we get in this dataset the following variables.
+
+- time : vector of observed failure times.
+
+- event: vector of indicator of status (0 for censoring, 1 for type of event).
+
+- tmt.arm.number: vector of treatment indicator (1 if treated and 0 otherwise).
+
+- treatment.type: the type of treatment immonotherapy or chemotherapy
