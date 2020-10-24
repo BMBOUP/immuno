@@ -1,0 +1,262 @@
+---
+title: Webappendix for the article entitled Insights for quantifying the long-term
+  benefit of immunotherapy using quantile regression
+author: "Bassirou Mboup, Christophe Le Tourneau,  Aurélien Latouche"
+date: "07/05/2020"
+output:
+  pdf_document: default
+  bibliography: bibli.bib 
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r include=FALSE}
+library(pandocfilters)
+library(car)
+library(survival)
+library(quantreg)
+library(survminer)
+library(boot)
+library(ggplot2)
+
+```
+
+
+This document makes an easier access to the supplementary material of the article entitled **Insights for quantifying the long-term benefit of immunotherapy using quantile regression**.
+
+## 1) Importing the reconstructed data set
+
+We use the algorithm of Guyot. al 2012 to reconstruct individual-level time-to-event data based on the published Kaplan–Meier curves of the randomized controlled trial (Rittmeyer et al. 2017). 
+
+The R code of the algorithm is available at https://www.mskcc.org/sites/default/files/node/137932/documents/2017-04-20-14-31-36/dataexample.zip 
+
+After reconstruction, we get in this dataset the following variables.
+
+- time : vector of observed failure times e.g (death or censored).
+
+- event: vector of indicator of status (1 for death and 0 for censoring).
+
+- tmt.arm.number: vector of treatment indicator (binary with 1 for immunotherapy).
+
+- treatment.type: the type of treatment (char) immonotherapy or chemotherapy
+
+```{r echo=FALSE}
+load("data_ICI_Rittmeyer.RData")
+head(data_ICI_Rittmeyer)
+data_ICI_Rittmeyer$tmt.arm.number <- ifelse(data_ICI_Rittmeyer$treatment.type=="Atezolizumab",1,0)
+
+```
+
+
+
+```{r}
+## Kaplan Meier curves 
+fit_KM <- survfit(Surv(time,event)~tmt.arm.number,data=data_ICI_Rittmeyer)
+
+res <- ggsurvplot(fit_KM,data=data_ICI_Rittmeyer,
+           risk.table=TRUE,
+           conf.int=FALSE,
+           xlim=c(0.4,27),
+           palette =c("red","blue"),
+           xlab="Months",
+           risk.table.y.text.col=T,
+            break.time.by=3,
+          ggtheme = theme_grey() ,
+           legend.title="Treatment",
+           legend.labs=c("Chemo","Immuno")
+            )
+res$table <- res$table + theme(axis.line = element_blank())
+res$plot <- res$plot+geom_hline(yintercept=0.28,lty=2)
+print(res)
+
+```
+
+
+
+## 2) Application of quantile regression for survival data
+In the following R output,
+test of the coefficients compares this coefficients to $0$ for a given quantile $\tau$. For the coefficient $\beta_1(\tau)$, this test rejects or not the equality of the two treatment groups for a given quantile $\tau$. This test is based of the Wald test and the variance of the coefficients is obtained using resampling bootstraps method.
+
+Thus, we do not reject the hypothesis of equality of the two groups at 0.1 quantile  (P.value=0.9470) illustrated by the overlap of the curves at this quantile.  
+
+We reject this hypothesis at 0.6 quantile (P.value $<10^{-4}$).
+
+
+```{r warning=FALSE}
+set.seed(123456)
+x <- c(0.1, 0.2, 0.3, 0.4,0.5,0.6)
+Rq <- crq(Surv(time,event)~tmt.arm.number,data=data_ICI_Rittmeyer,method="Pen") 
+result <- summary(Rq,taus=x)
+
+result
+
+# Quantile function 
+tau <- Rq$sol["tau",][1:160]
+q<- Rq$sol["Qhat",][1:160]
+plot(tau,q,type="l",xlab = expression(tau),ylab = expression(QT(tau)), 
+     main="Quantile function",axes=FALSE)
+axis(1,at=seq(from=0,to=0.7,by=0.1),labels=seq(from=0,to=0.7,by=0.1),las=1)
+axis(2,at=seq(from=0,to=20,by=5),labels=seq(from=0,to=20,by=5),las=2)
+
+```
+
+
+
+
+## 3) Resampling for confidence interval of  coefficients  
+
+```{r}
+
+############ data for bootstrapping with 1000 replications ################
+load("Mat.RData") 
+load("Moy.RData")
+load("Mat1.RData")
+load("Moy1.RData")
+
+b <- matrix(data=NA,ncol=6,nrow = 1000)
+for(i in 1:6){
+b[,i] <-Mat1[,i][order(Mat1[,i])]
+}
+
+inf0 <- NA
+for(i in 1:6){
+inf0[i] <- b[,i][25]
+}
+sup0 <- NA
+for(i in 1:6){
+  sup0[i] <- b[,i][975]
+}
+
+plot(x,Moy1,type="l",ylim=c(0,16),ylab="coefficients",xlab ="Quantile",main="Intercept",axes = FALSE)
+axis(1,at=seq(from=0.1,to=0.6,by=0.1),labels=seq(from=0.1,to=0.6,by=0.1),las=1)
+axis(2,at=seq(from=0,to=16,by=2),labels=seq(from=0,to=16,by=2),las=2)
+lines(x,sup0,col="blue",lty=2)
+lines(x,inf0,col="blue",lty=2)
+
+```
+
+
+
+
+```{r}
+## Variation of the treatment effect as function of each quantile available and confidence 
+# intervals
+b <- matrix(data=NA,ncol=6,nrow = 1000)
+for(i in 1:6){
+b[,i] <-Mat[,i][order(Mat[,i])]
+}
+
+inf <- NA
+for(i in 1:6){
+inf[i] <- b[,i][25]
+}
+sup <- NA
+for(i in 1:6){
+  sup[i] <- b[,i][975]
+}
+
+
+plot(x,Moy,type="l",ylim=c(-2,12),ylab="coefficients",xlab ="Quantile",main="Treatment effect",axes = FALSE)
+axis(1,at=seq(from=0.1,to=0.6,by=0.1),labels=seq(from=0.1,to=0.6,by=0.1),las=1)
+axis(2,at=seq(from=-2,to=12,by=2),labels=seq(from=-2,to=12,by=2),las=2)
+lines(x,sup,col="blue",lty=2)
+lines(x,inf,col="blue",lty=2)
+```
+
+
+## 4) Benefit of treatment for each quantile
+
+```{r}
+datafr <- rbind.data.frame(Moy,inf,sup)
+names(datafr) <- c( "0.1", "0.2", "0.3", "0.4", "0.5","0.6")
+p <- ggplot(stack(datafr), aes(x=factor(ind,levels=names(datafr)), y=values))+geom_boxplot()
+p+labs(x="Quantile",y="Benefit in months")
+```
+
+
+
+
+## 5) Visual check  of the linearity assumption 
+
+```{r}
+x <- c(0.1,0.2,0.3,0.4,0.5,0.6)
+Rq <- crq(Surv(time,event)~tmt.arm.number,data=data_ICI_Rittmeyer,method="Pen")
+tau <- Rq$sol["tau",][1:160]
+obs <- unname(quantile(data_ICI_Rittmeyer$time,tau))
+obss <- unname(quantile(data_ICI_Rittmeyer$time,x))
+q<- Rq$sol["Qhat",][1:160]
+q1 <- Rq$sol["Qhat",][c(24,46,69,91,114,136)]
+residu <- obs-q
+residus <- obss-q1
+scatterplot(q,log(abs(residu)),xlab="fitted quantile value",ylab="Martingal residuals")
+points(q1,log(abs(residus)),col='red')
+for(i in 1:6){
+  abline(v=q1[i],col="red")
+}
+
+
+```
+
+
+
+
+##
+
+
+```{r}
+
+load("ImmunoRit.RData")
+library(knitr)
+library(riskRegression)
+
+db <- ImmunoRit
+cox1<-coxph(Surv(time,event)~Treat, data=db,x=TRUE)
+
+db2<-mutate(db,Treat=0)
+
+pr<-predictCox(cox1,times=db2$time,newdata=db2,type="cumhazard")
+cumhaz<-pr$cumhazard[1,]
+
+
+
+beta1 <- log(0.59)
+lamda <- cumhaz
+beta2 <- log(0.74)
+beta3 <- log(0.36)
+
+genereTime <- function(x,lamda,trt,uni){
+  return(-log(uni)/(lamda*exp(beta2*trt+beta1*x+beta3*x*trt)))
+}
+
+ttt <- ImmunoRit$Treat
+n=850
+
+PDL1 <- rep(NA,n)
+for(i in 1:n) {
+  x <- -1
+  while(x<0){
+    uni <- runif(1,0,1)
+    x <- uniroot((function(x)(genereTime(x,lamda[i],ttt[i],uni)-ImmunoRit$time[i])),lower=-10,upper=10,extendInt = "yes")$root 
+    
+  }
+  PDL1[i] <- x
+}
+
+summary(PDL1)
+ImmunoRit$PDL1 <- PDL1
+
+cox<-coxph(Surv(time,event)~Treat*PDL1,data=db,x=TRUE)
+summary(cox)
+
+Rq_1 <- crq(Surv(time,event)~Treat*PDL1,data=ImmunoRit,method="PengHuang")
+result <- summary(Rq_1,tau=c(0.1,0.20,0.30,0.40,0.50,0.6))
+kable(result[[6]][2]$coefficients)
+
+```
+
+
+
